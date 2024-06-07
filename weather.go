@@ -34,10 +34,6 @@ type QueryParams struct {
 	EndDate   string `json:"end_date"`
 }
 
-type ParamData struct {
-	data []QueryParams
-}
-
 type WeatherData struct {
 	Location      string  `firestore:"location"`
 	Date          string  `firestore:"date"`
@@ -46,8 +42,9 @@ type WeatherData struct {
 }
 
 func main() {
-
 	ctx := context.Background()
+
+	// Initialize Firebase app
 	opt := option.WithCredentialsFile("sdk.json")
 	app, err := firebase.NewApp(ctx, nil, opt)
 	if err != nil {
@@ -59,14 +56,13 @@ func main() {
 	}
 	defer client.Close()
 
+	// Create a new router
 	r := chi.NewRouter()
-	store := &ParamData{
-		data: make([]QueryParams, 0),
-	}
 
+	// Initialize Resty client
 	restClient := resty.New()
 
-	//POST METHOD
+	// POST method handler
 	r.Post("/", func(w http.ResponseWriter, r *http.Request) {
 		log.Println("POST / endpoint hit")
 		var param QueryParams
@@ -127,21 +123,17 @@ func main() {
 
 		log.Printf("Weather data: %+v\n", weatherData)
 
-		store.data = append(store.data, param)
-
 		w.Header().Set("Content-Type", "application/json")
 		if err := json.NewEncoder(w).Encode(weatherData); err != nil {
 			log.Printf("Error encoding response: %v\n", err)
 		}
 	})
 
-	//GET METHOD
+	// GET method handler
 	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
 		log.Println("GET / endpoint hit")
 
-		ctx := context.Background()
 		colRef := client.Collection("weather_data")
-		// Get all documents from the collection
 		docs, err := colRef.Documents(ctx).GetAll()
 		if err != nil {
 			log.Println("Error getting documents from Firestore:", err)
@@ -149,38 +141,29 @@ func main() {
 			return
 		}
 
-		// Initialize slice to store retrieved data
 		var data []WeatherData
-
-		// Iterate through documents
 		for _, doc := range docs {
 			var wd WeatherData
-
-			// Unmarshal Firestore document into WeatherData struct
 			if err := doc.DataTo(&wd); err != nil {
 				log.Printf("Error decoding Firestore data: %v\n", err)
 				continue
 			}
-
-			// Append decoded data to slice
 			data = append(data, wd)
 		}
 
-		// Set response header
 		w.Header().Set("Content-Type", "application/json")
-
-		// Encode data as JSON and send response
 		if err := json.NewEncoder(w).Encode(data); err != nil {
 			log.Printf("Error encoding response: %v\n", err)
 			http.Error(w, "Error encoding response", http.StatusInternalServerError)
 		}
 	})
-	//localhost:3002
-	log.Println("Starting server on :3002")
-	if err := http.ListenAndServe(":3002", r); err != nil {
+
+	// Serve the requests
+	http.HandleFunc("/", r.ServeHTTP)
+
+	// Required for Cloud Functions
+	log.Println("Starting server on :8080")
+	if err := http.ListenAndServe(":8080", nil); err != nil {
 		log.Fatal(err)
 	}
-
 }
-
-//GIT CREATE new BRANCH, do push in the branch
